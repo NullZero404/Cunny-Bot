@@ -1,6 +1,8 @@
 import discord
 import os
-import sqlite3
+import asyncio
+import yt_dlp
+from dotenv import load_dotenv
 import random
 import json
 import urllib.parse
@@ -12,7 +14,7 @@ from discord import app_commands
 import key
 
 #start
-bot = commands.Bot(command_prefix="$", intents=discord.Intents.all())
+bot = commands.Bot(command_prefix="-", intents=discord.Intents.all())
 
 @bot.event
 async def on_ready():
@@ -36,37 +38,11 @@ async def on_message_error(ctx, error):
     if isinstance(error, discord.ext.commands.errors.CommandNotFound):
         await ctx.send("Error")
 
-#random stuff
+#COMMAND STUFF
 @bot.tree.command(name="ping")
 async def ping(interaction: discord.Interaction):
     """ping and shit."""
-    await interaction.response.send_message(f"Pong :sob: {interaction.user.mention}")
-
-@bot.tree.command(name="add")
-async def add(interaction: discord.Interaction, left: int, right: int):
-  """Adds two numbers together."""
-  await interaction.response.send_message(left + right)
-
-@bot.tree.command(name="winrate")
-async def roll(interaction: discord.Interaction, win: int, lose: int):
-  """roll upto a number(default 100)"""
-  tg = win+lose
-  wr = (win/tg)*100
-  await interaction.response.send_message(wr)
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
+    await interaction.response.send_message(f"Pong :sob: {interaction.user.mention} ping = {bot.latency:.2f}")
       
 #Riot Api 
 #resets everyday
@@ -113,6 +89,8 @@ def getSummonerInfo(summonerID):
     solo_wins = 0
     solo_losses = 0
     solo_lp = 0
+    arena_wins = 0
+    arena_losses = 0
 
     for entry in jsonDataSummoner:
         if entry["queueType"] == "RANKED_FLEX_SR":
@@ -127,8 +105,11 @@ def getSummonerInfo(summonerID):
             solo_wins = entry["wins"]
             solo_losses = entry["losses"]
             solo_lp = entry['leaguePoints']
+        elif entry["queueType"] == "CHERRY":
+            arena_wins = entry["wins"]
+            arena_losses = entry["losses"]
 
-    return flex_tier, flex_rank, flex_wins, flex_losses, solo_tier, solo_rank, solo_wins, solo_losses, flex_lp, solo_lp
+    return flex_tier, flex_rank, flex_lp, flex_wins, flex_losses, solo_tier, solo_rank, solo_lp, solo_wins, solo_losses, arena_wins, arena_losses 
 
 def calcWinrate(win, lose):
   games = win + lose
@@ -155,160 +136,186 @@ async def summoner(interaction: discord.Interaction, riot_name: str, riot_tag: s
     lol_info = getLoLInfo(riot_info[0])
     summ_info = getSummonerInfo(lol_info[2])
     
+    #winrate
     #sd 
-    games_sd = summ_info[6] + summ_info[7]
-    qt_sd = (summ_info[6]/games_sd) * 100
+    games_sd = summ_info[8] + summ_info[9]
+    qt_sd = (summ_info[8]/games_sd) * 100
     #flex
-    games_flex = summ_info[2] + summ_info[3]
-    qt_flex = (summ_info[2]/games_flex) * 100
+    games_flex = summ_info[3] + summ_info[4]
+    qt_flex = (summ_info[3]/games_flex) * 100
+    #arena
+    games_arena = summ_info[10] + summ_info[11]
+    qt_arena = (summ_info[10]/games_arena) * 100
     
     embed = discord.Embed(title=riot_name, description=lol_info[0], color=0xFFD500)
     embed.set_thumbnail(url=lol_info[1])
-    embed.add_field(name='Ranked Solo/Duo', value=f'{summ_info[4]} {summ_info[5]} LP: {summ_info[8]} W: {summ_info[6]} L: {summ_info[7]} Winrate: {qt_sd:.2f}%', inline=False)
-    embed.add_field(name='Ranked Flex', value=f'{summ_info[0]} {summ_info[1]} LP: {summ_info[9]} W: {summ_info[2]} L: {summ_info[3]} Winrate: {qt_flex:.2f}%', inline=False)
+    embed.add_field(name='Ranked Solo/Duo', value=f'{summ_info[5]} {summ_info[6]} LP: {summ_info[7]} W: {summ_info[8]} L: {summ_info[9]} Winrate: {qt_sd:.2f}%', inline=False)
+    embed.add_field(name='Ranked Flex', value=f'{summ_info[0]} {summ_info[1]} LP: {summ_info[2]} W: {summ_info[3]} L: {summ_info[4]} Winrate: {qt_flex:.2f}%', inline=False)
+    embed.add_field(name='Arena', value=f'W: {summ_info[10]} L: {summ_info[11]} Winrate: {qt_arena:.2f}%', inline=False)
     await interaction.response.send_message(embed=embed)
-  
-# def clearNameSpaces(nameWithSpaces):
-#   result = ""
-#   for n in nameWithSpaces:
-#     result = result + " " + str(n)
-#   return result
-
-# def getProfile(region, name):
-#     if region == "ph":
-#         API_Riot = "https://ph2.api.riotgames.com/lol/summoner/v4/summoners/by-name/" + name + "?api_key=" + RIOT_TOKEN
-#     response = requests.get(API_Riot)
-#     jsonDataSummoner = response.json()
-#     sEncryptedId = jsonDataSummoner['id']
-#     sName = jsonDataSummoner['name']
-#     sLevel = "Lvl. " + str(jsonDataSummoner['summonerLevel'])
-#     sIcon = "http://ddragon.leagueoflegends.com/cdn/13.22.1/img/profileicon/" + str(jsonDataSummoner['profileIconId']) + ".png"
-#     return (sName, sLevel, sIcon, sEncryptedId)
-
-# def fetchRanks(region, sEncryptedId):
-#     if region == "ph":
-#         API_Riot = "https://ph2.api.riotgames.com/lol/league/v4/entries/by-summoner/" + sEncryptedId + "?api_key=" + RIOT_TOKEN
-#     response = requests.get(API_Riot)
-#     jsonDataSummoner = response.json()
-#     calls = {0:"queueType", 1:"tier", 2:"rank", 3:"leaguePoints", 4:"wins", 5:"losses"}
-#     ranks = []
-#     try:
-#         for i in range(3):
-#             for j in range(6):
-#                 ranks.append(jsonDataSummoner[i][calls[j]])
-#     except:
-#         pass
-#     return ranks
-
-# @bot.command()
-# async def summoner(ctx, *nameWithSpaces):
-#     name = clearNameSpaces(nameWithSpaces)
-#     summoner = getProfile("ph", name)
-#     summonerRanking = fetchRanks("ph", summoner[3])
-#     embed = discord.Embed(title=summoner[0], description=summoner[1], color=0xFFD500)
-#     embed.set_thumbnail(url=summoner[2])
     
-#     # solo duo
-#     try:
-#         g = summonerRanking[10] + summonerRanking[11]
-#         wr = (summonerRanking[10]/g)*100        
-#         tmp = f"{summonerRanking[7]} {summonerRanking[8]} • LP: {summonerRanking[9]} • W: {summonerRanking[10]} • L: {summonerRanking[11]} • WR: {wr:.2f}%"
-#         qt = ""
-#         if summonerRanking[6] == "RANKED_SOLO_5x5":
-#           qt="Solo Duo"
-#         elif summonerRanking[6] == "RANKED_FLEX_SR":
-#           qt="Flex"
-#         else:
-#           qt="nigga, that shit is wrong as fuck"
-#         embed.add_field(name=qt, value=tmp, inline=False)
-#     except:
-#         embed.add_field(name=qt, value="Rank Unavailable", inline=False)
-        
-#     # flex
-#     try:
-#         g = summonerRanking[4] + summonerRanking[5]
-#         wr = (summonerRanking[4]/g)*100  
-#         tmp = f"{summonerRanking[1]} {summonerRanking[2]} • LP:{summonerRanking[3]} • Wins: {summonerRanking[4]} • Losses: {summonerRanking[5]} • WR: {wr:.2f}%"
-#         qt = ""
-#         if summonerRanking[0] == "RANKED_SOLO_5x5":
-#           qt="Solo Duo"
-#         elif summonerRanking[0] == "RANKED_FLEX_SR":
-#           qt="Flex"
-#         else:
-#           qt="nigga, that shit is wrong as fuck"
-#         embed.add_field(name=qt, value=tmp, inline=False)
-#     except:
-#         embed.add_field(name=qt, value="Rank Unavailable", inline=False)
-#     await ctx.send(embed=embed)
+#MUSIC
+# Music-related variables
+voice_clients = {}
+music_queue = {}
+looping = {}
+search_results = {}
 
-#roll
-@bot.command()
-async def roll(ctx, upto: int):
-  if upto is None:
-    await ctx.channel.send(random.randint(0, 100))
-  else:
-    await ctx.channel.send(random.randint(0, upto))
-    
-#random stuff
-@bot.command()
-async def motivation(ctx):
-  await ctx.channel.send(ctx.author.mention + ' bobo ka kase *slaps*')
+ytdl_format_options = {'format': 'bestaudio/best'}
+ffmpeg_options = {'options': '-vn'}
+ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
 
+@bot.event
+async def on_ready():
+    print(f'We have logged in as {bot.user}')
 
+async def play_next(ctx):
+    if len(music_queue[ctx.guild.id]) > 0:
+        next_song = music_queue[ctx.guild.id].pop(0)
+        player = discord.FFmpegPCMAudio(next_song['url'], **ffmpeg_options)
+        ctx.voice_client.play(player, after=lambda e: asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop))
 
-@bot.command()
-async def choose(ctx, *choices: str):
-    await ctx.send(random.choice(choices))
+        if looping.get(ctx.guild.id, False):
+            music_queue[ctx.guild.id].append(next_song)
 
-@bot.command()
-async def winrate(ctx, w: int, g: int):
-  calc = (w/g) * 100
-  await ctx.send("Winrate: "+str(calc)+"%")
-
-@bot.command()
-async def ars(ctx, ars: float):
-  hehe = ars*3.298
-  heehee = hehe*0.85
-  await ctx.channel.send("PHP to ARS: "+str(hehe)+" total after fees: ~"+str(heehee))
-
-@bot.command()
-async def php(ctx, php: float):
-  hehe = php/3.298
-  heehee = hehe*0.85
-  await ctx.channel.send("ARS to PHP: "+str(hehe)+" total after fees: ~"+str(heehee))
-
-@bot.command()
-async def casino(ctx, choice: int):
-  if choice > 36:
-    await ctx.send("Choices should be between 0-36")
-    return
-  else:
-    if choice == 0:
-      await ctx.send("Your choice is "+str(choice)+" Green")
-    elif (choice % 2) == 0:
-      await ctx.send("Your choice is "+str(choice)+" Black")
+        embed = discord.Embed(title="Now Playing", description=next_song['title'], color=0x00ff00)
+        await ctx.send(embed=embed)
     else:
-      await ctx.send("Your choice is "+str(choice)+" Red")
-    
-    roll = int(random.randint(0,36))
-    if roll == 0:
-      await ctx.send("The number is "+str(roll)+" Green")
-    elif (roll % 2) == 0:
-      await ctx.send("The number is "+str(roll)+" Black")
+        await ctx.voice_client.disconnect()
+        await ctx.send(embed=discord.Embed(title="Queue Ended", description="No more songs in the queue.", color=0xff0000))
+
+@bot.command()
+async def p(ctx, *, search: str):
+    if ctx.author.voice is None:
+        await ctx.send(embed=discord.Embed(title="Error", description="You need to join a voice channel first!", color=0xff0000))
+        return
+
+    if ctx.voice_client is None:
+        channel = ctx.author.voice.channel
+        voice_client = await channel.connect()
+        voice_clients[ctx.guild.id] = voice_client
+        music_queue[ctx.guild.id] = []
+        looping[ctx.guild.id] = False
+        await ctx.send(embed=discord.Embed(title="Connected", description="Connected to the voice channel!", color=0x00ff00))
     else:
-      await ctx.send("The number is "+str(roll)+" Red")
-    
-    if choice == roll:
-      await ctx.send("CONGRATULATIONS your choice: ",str(choice)," WON the JACKPOT")
-    elif roll % 2 == 0 and choice % 2 == 0:
-      await ctx.send("YOU WON")
-    elif roll % 2 == 1 and choice % 2 == 1:
-      await ctx.send("YOU WON")
+        voice_client = ctx.voice_client
+
+    try:
+        search_query = f"ytsearch:{search}"
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(search_query, download=False))
+        song_info = {
+            'url': data['entries'][0]['url'],
+            'title': data['entries'][0]['title']
+        }
+
+        music_queue[ctx.guild.id].append(song_info)
+
+        if not voice_client.is_playing():
+            await play_next(ctx)
+        else:
+            await ctx.send(embed=discord.Embed(title="Added to Queue", description=song_info['title'], color=0x00ff00))
+
+    except Exception as e:
+        print(e)
+        await ctx.send(embed=discord.Embed(title="Error", description="There was an error adding the song to the queue.", color=0xff0000))
+
+@bot.command()
+async def psearch(ctx, *, search: str):
+    if ctx.author.voice is None:
+        await ctx.send(embed=discord.Embed(title="Error", description="You need to join a voice channel first!", color=0xff0000))
+        return
+
+    try:
+        search_query = f"ytsearch10:{search}"
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(search_query, download=False))
+
+        results = []
+        for i, entry in enumerate(data['entries'], start=1):
+            results.append(f"{i}. {entry['title']}")
+
+        search_results[ctx.author.id] = data['entries']
+
+        embed = discord.Embed(title="Search Results", description="\n".join(results), color=0x00ff00)
+        embed.set_footer(text="Type the number of the song you want to play.")
+        await ctx.send(embed=embed)
+
+    except Exception as e:
+        print(e)
+        await ctx.send(embed=discord.Embed(title="Error", description="There was an error fetching search results.", color=0xff0000))
+
+@bot.command()
+async def pick(ctx, number: int):
+    if ctx.author.voice is None:
+        await ctx.send(embed=discord.Embed(title="Error", description="You need to join a voice channel first!", color=0xff0000))
+        return
+
+    if ctx.voice_client is None:
+        channel = ctx.author.voice.channel
+        voice_client = await channel.connect()
+        voice_clients[ctx.guild.id] = voice_client
+        music_queue[ctx.guild.id] = []
+        looping[ctx.guild.id] = False
+        await ctx.send(embed=discord.Embed(title="Connected", description="Connected to the voice channel!", color=0x00ff00))
     else:
-      await ctx.send("YOU LOSE")
-  
+        voice_client = ctx.voice_client
 
+    if ctx.author.id not in search_results or not (1 <= number <= len(search_results[ctx.author.id])):
+        await ctx.send(embed=discord.Embed(title="Error", description="Invalid selection or no search results found.", color=0xff0000))
+        return
 
+    song_info = {
+        'url': search_results[ctx.author.id][number - 1]['url'],
+        'title': search_results[ctx.author.id][number - 1]['title']
+    }
 
+    music_queue[ctx.guild.id].append(song_info)
 
-bot.run(f'{key.API_KEY}')
+    if not voice_client.is_playing():
+        await play_next(ctx)
+    else:
+        await ctx.send(embed=discord.Embed(title="Added to Queue", description=song_info['title'], color=0x00ff00))
+
+# View the queue
+@bot.command()
+async def q(ctx):
+    if ctx.guild.id not in music_queue or len(music_queue[ctx.guild.id]) == 0:
+        await ctx.send(embed=discord.Embed(title="Queue", description="The queue is currently empty.", color=0xff0000))
+    else:
+        current_song = "No song currently playing" if not ctx.voice_client.is_playing() else music_queue[ctx.guild.id][0]['title']
+        queue_list = '\n'.join([f"{idx + 1}. {song['title']}" for idx, song in enumerate(music_queue[ctx.guild.id])])
+        embed = discord.Embed(title="Current Queue", description=f"**Now Playing:**\n{current_song}\n\n**Up Next:**\n{queue_list}", color=0x00ff00)
+        await ctx.send(embed=embed)
+
+# Skip the current song
+@bot.command()
+async def s(ctx):
+    if ctx.voice_client is None or not ctx.voice_client.is_playing():
+        await ctx.send(embed=discord.Embed(title="Error", description="No song is currently playing!", color=0xff0000))
+    else:
+        ctx.voice_client.stop()
+        await ctx.send(embed=discord.Embed(title="Skipped", description="The current song was skipped!", color=0x00ff00))
+
+# Toggle looping of the queue
+@bot.command()
+async def l(ctx):
+    if ctx.guild.id not in looping:
+        looping[ctx.guild.id] = False
+
+    looping[ctx.guild.id] = not looping[ctx.guild.id]
+    status = "enabled" if looping[ctx.guild.id] else "disabled"
+    await ctx.send(embed=discord.Embed(title="Looping", description=f"Looping has been {status}.", color=0x00ff00))
+
+# Disconnect from voice channel
+@bot.command()
+async def dc(ctx):
+    if ctx.voice_client is None:
+        await ctx.send(embed=discord.Embed(title="Error", description="I am not connected to any voice channel!", color=0xff0000))
+        return
+    await ctx.voice_client.disconnect()
+    await ctx.send(embed=discord.Embed(title="Disconnected", description="Disconnected from the voice channel!", color=0x00ff00))
+
+load_dotenv()
+TOKEN = os.getenv('discord_token')
+bot.run(f'{TOKEN}')
